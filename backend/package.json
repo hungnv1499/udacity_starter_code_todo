@@ -23,7 +23,11 @@
     "http-errors": "^2.0.0",
     "jsonwebtoken": "^8.5.1",
     "serverless-iam-roles-per-function": "^3.2.0",
+    "serverless-plugin-tracing": "^2.0.0",
     "uuid": "^9.0.0",
     "winston": "^3.8.2"
+  },
+  "devDependencies": {
+    "serverless-webpack": "^5.13.0"
   }
 }
