@@ -4,6 +4,9 @@ service: serverless-todo-app
 
 plugins:
   - serverless-iam-roles-per-function
+  - serverless-plugin-tracing
+  - serverless-reqvalidator-plugin
+  - serverless-aws-documentation
 
 frameworkVersion: '3'
 
@@ -19,11 +22,11 @@ provider:
     apiGateway: true
 
   environment:
-    TODOS_TABLE: Serverless-todo-${self:provider.stage}
+    TODOS_TABLE: Serverless-c4-todo-${self:provider.stage}
     TODOS_CREATED_AT_INDEX: CreatedAtIndex
-    ATTACHMENT_S3_BUCKET: serverless-todo-images-${self:provider.stage}
-    SIGNED_URL_EXPIRATION: 300
-    PROJECT_NAME: serverless-todo
+    ATTACHMENT_S3_BUCKET: serverless-hungnv1020512-todo-images-${self:provider.stage}
+    SIGNED_URL_EXPIRATION: 500
+    PROJECT_NAME: serverless-hungnv102-todo
     INDEX_NAME: ${self:provider.environment.TODOS_CREATED_AT_INDEX}
 
   logs:
@@ -49,7 +52,6 @@ functions:
           - dynamodb:Query
         Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
 
-
   # TODO: Configure this function
   CreateTodo:
     handler: src/lambda/http/createTodo.handler
@@ -59,12 +61,10 @@ functions:
           path: todos
           cors: true
           authorizer: Auth
+          request:
+            schema:
+              application/json: ${file(models/create-todo-model.json)}
           reqValidatorName: RequestBodyValidator
-          documentation:
-            sumary: Create a new todo
-            description: Create a new doto
-            requestModels:
-              'application/json': CreateTodoModel
     iamRoleStatements:
       - Effect: Allow
         Action:
@@ -80,12 +80,10 @@ functions:
           path: todos/{todoId}
           cors: true
           authorizer: Auth
+          request:
+            schema:
+              application/json: ${file(models/update-todo-model.json)}
           reqValidatorName: RequestBodyValidator
-          documentation:
-            sumary: Update a todo
-            description: Update a todo
-            requestModels:
-              'application/json': UpdateTodoModel
     iamRoleStatements:
       - Effect: Allow
         Action:
@@ -107,7 +105,6 @@ functions:
         Action:
           - dynamodb:DeleteItem
         Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.TODOS_TABLE}
-
 
   # TODO: Configure this function
   GenerateUploadUrl:
@@ -131,16 +128,7 @@ functions:
 
 resources:
   Resources:
-    RequestBodyValidator:
-      Type: AWS::ApiGateway::RequestValidator
-      Properties:
-        Name: 'request-body-validator'
-        RestApiId:
-          Ref: ApiGatewayRestApi
-        ValidateRequestBody: true
-        ValidateRequestParameters: false
-
-    # TODO: Add any necessary AWS resources
+    # TODO: Add any necessary AWS resource
     GatewayResponseDefault4XX:
       Type: AWS::ApiGateway::GatewayResponse
       Properties:
@@ -151,3 +139,84 @@ resources:
         ResponseType: DEFAULT_4XX
         RestApiId:
           Ref: ApiGatewayRestApi
+    RequestBodyValidator:
+      Type: AWS::ApiGateway::RequestValidator
+      Properties:
+        Name: 'request-body-validator'
+        RestApiId:
+          Ref: ApiGatewayRestApi
+        ValidateRequestBody: true
+        ValidateRequestParameters: false
+    
+    TodosTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: todoId
+            AttributeType: S
+          - AttributeName: createAt
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: todoId
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${self:provider.environment.TODOS_TABLE}
+        LocalSecondaryIndexes:
+          - IndexName: ${self:provider.environment.TODOS_CREATED_AT_INDEX}
+            KeySchema:
+              - AttributeName: userId
+                KeyType: HASH
+              - AttributeName: createAt
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+
+    AttachmentsBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        PublicAccessBlockConfiguration:
+          BlockPublicPolicy: false
+          RestrictPublicBuckets: false
+        BucketName: ${self:provider.environment.ATTACHMENT_S3_BUCKET}
+        CorsConfiguration:
+          CorsRules:
+            -
+              AllowedOrigins:
+                - '*'
+              AllowedHeaders:
+                - '*'
+              AllowedMethods:
+                - GET
+                - PUT
+                - POST
+                - DELETE
+                - HEAD
+              MaxAge: 3000
+
+    BucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        PolicyDocument:
+          Id: MyPolicy
+          Version: "2012-10-17"
+          Statement:
+            - Sid: PublicReadForGetBucketObjects
+              Effect: Allow
+              Principal: '*'
+              Action: [
+                "s3:GetObject",
+                "s3:PutObject"
+              ]
+              Resource: 'arn:aws:s3:::${self:provider.environment.ATTACHMENT_S3_BUCKET}/*'
+        Bucket: !Ref AttachmentsBucket
+
+custom:
+  api:
+      info:
+        version: v1.0.0
+        title: Serverless Todo - API
+        description: Serverless application related to todo task

@@ -1,15 +1,17 @@
-import Axios from 'axios'
-import jsonwebtoken from 'jsonwebtoken'
-import { createLogger } from '../../utils/logger.mjs'
+import Axios from 'axios';
+import jwt from 'jsonwebtoken';
+import { createLogger } from '../../utils/logger.mjs';
 
-const logger = createLogger('auth')
+const logger = createLogger('auth');
+const { verify, decode } = jwt;
 
-const jwksUrl = 'https://test-endpoint.auth0.com/.well-known/jwks.json'
+// @hungnv102: change the endpoint
+const jwksUrl = 'https://dev-bsofuulqu3p5if2o.us.auth0.com/.well-known/jwks.json';
 
 export async function handler(event) {
   try {
-    const jwtToken = await verifyToken(event.authorizationToken)
-
+    const jwtToken = await verifyToken(event.authorizationToken);
+    logger.info('User with token: ', jwtToken); 
     return {
       principalId: jwtToken.sub,
       policyDocument: {
@@ -22,9 +24,9 @@ export async function handler(event) {
           }
         ]
       }
-    }
+    };
   } catch (e) {
-    logger.error('User not authorized', { error: e.message })
+    logger.error('User not authorized', { error: e.message });
 
     return {
       principalId: 'user',
@@ -38,26 +40,40 @@ export async function handler(event) {
           }
         ]
       }
-    }
+    };
   }
 }
 
 async function verifyToken(authHeader) {
-  const token = getToken(authHeader)
-  const jwt = jsonwebtoken.decode(token, { complete: true })
+  const token = getToken(authHeader);
+  const jwt = decode(token, { complete: true });
 
   // TODO: Implement token verification
-  return undefined;
+  const response = await Axios.get(jwksUrl);
+  const keys = response.data.keys;
+  const jwtSignKeys = keys.find(key => key.kid === jwt.header.kid);
+  logger.info('jwtSignKeys', jwtSignKeys);
+
+  if (!jwtSignKeys) {
+    throw new Error("No keys found in the JWT endpoint");
+  }
+
+  const pemData = jwtSignKeys.x5c[0];
+  const cert = `-----BEGIN CERTIFICATE-----\n${pemData}\n-----END CERTIFICATE-----`;
+  const verifiedToken = verify(token, cert, { algorithms: ['RS256'] });
+  logger.info('verifiedToken', verifiedToken);
+
+  return verifiedToken;
 }
 
 function getToken(authHeader) {
-  if (!authHeader) throw new Error('No authentication header')
+  if (!authHeader) throw new Error('No authentication header');
 
   if (!authHeader.toLowerCase().startsWith('bearer '))
-    throw new Error('Invalid authentication header')
+    throw new Error('Invalid authentication header');
 
-  const split = authHeader.split(' ')
-  const token = split[1]
+  const split = authHeader.split(' ');
+  const token = split[1];
 
-  return token
+  return token;
 }
